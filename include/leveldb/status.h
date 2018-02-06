@@ -18,6 +18,8 @@
 
 namespace leveldb {
 
+// Status表示levelDB的一个返回状态
+//  leveldb将错误号和错误信息封装成Status类，来统一进行处理
 class Status {
  public:
   // Create a success status.
@@ -76,8 +78,12 @@ class Status {
   //    state_[0..3] == length of message
   //    state_[4]    == code
   //    state_[5..]  == message
+  // 记录错误信息,
+  // 如果OK, state_为NULL,
+  // 前四个字节记录错误信息的长度, 第五个字节记录错误码, 剩下的是错误信息
   const char* state_;
 
+  // 错误码
   enum Code {
     kOk = 0,
     kNotFound = 1,
@@ -87,6 +93,7 @@ class Status {
     kIOError = 5
   };
 
+  // 获得错误码, 第四个字节
   Code code() const {
     return (state_ == NULL) ? kOk : static_cast<Code>(state_[4]);
   }
@@ -98,9 +105,12 @@ class Status {
 inline Status::Status(const Status& s) {
   state_ = (s.state_ == NULL) ? NULL : CopyState(s.state_);
 }
+
+// 赋值
 inline void Status::operator=(const Status& s) {
   // The following condition catches both aliasing (when this == &s),
   // and the common case where both s and *this are ok.
+  // 如果当前对象和s对象不相等，删除当前对象, 然后拷贝s的state_
   if (state_ != s.state_) {
     delete[] state_;
     state_ = (s.state_ == NULL) ? NULL : CopyState(s.state_);

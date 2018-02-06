@@ -22,40 +22,53 @@
 
 namespace leveldb {
 
+// 对const char*的封装, 相当于一个内部string
+// Slice只包含对字符串的指针和记录当前字符串的长度
+// 对字符串的操作不会真正拷贝数据，只设计指针的移动，减小开销
 class Slice {
  public:
   // Create an empty slice.
+  // 一个空的字符串
   Slice() : data_(""), size_(0) { }
 
   // Create a slice that refers to d[0,n-1].
+  // 以const char*初始化, 指定长度为n
   Slice(const char* d, size_t n) : data_(d), size_(n) { }
 
   // Create a slice that refers to the contents of "s"
+  // 以string&初始化, 长度为string长度
   Slice(const std::string& s) : data_(s.data()), size_(s.size()) { }
 
   // Create a slice that refers to s[0,strlen(s)-1]
+  // 以const char*初始化, 长度为字符串长度
   Slice(const char* s) : data_(s), size_(strlen(s)) { }
 
   // Return a pointer to the beginning of the referenced data
+  // 返回字符串
   const char* data() const { return data_; }
 
   // Return the length (in bytes) of the referenced data
+  // 返回字符串长度
   size_t size() const { return size_; }
 
   // Return true iff the length of the referenced data is zero
+  // 判断字符串是否空
   bool empty() const { return size_ == 0; }
 
   // Return the ith byte in the referenced data.
   // REQUIRES: n < size()
+  // 获取第n个字符
   char operator[](size_t n) const {
     assert(n < size());
     return data_[n];
   }
 
   // Change this slice to refer to an empty array
+  // 清空字符串
   void clear() { data_ = ""; size_ = 0; }
 
   // Drop the first "n" bytes from this slice.
+  // 删除前n个字符
   void remove_prefix(size_t n) {
     assert(n <= size());
     data_ += n;
@@ -63,40 +76,51 @@ class Slice {
   }
 
   // Return a string that contains the copy of the referenced data.
+  // 返回一个string
   std::string ToString() const { return std::string(data_, size_); }
 
   // Three-way comparison.  Returns value:
   //   <  0 iff "*this" <  "b",
   //   == 0 iff "*this" == "b",
   //   >  0 iff "*this" >  "b"
+  // 和b进行比较
   int compare(const Slice& b) const;
 
   // Return true iff "x" is a prefix of "*this"
+  // 判断是否以x开始
   bool starts_with(const Slice& x) const {
+	// 当前size大于等于x.size_并且当前的前x.size_个字符串与x相等
     return ((size_ >= x.size_) &&
             (memcmp(data_, x.data_, x.size_) == 0));
   }
 
  private:
+  // 字符数组指针
   const char* data_;
+  // 长度
   size_t size_;
 
   // Intentionally copyable
 };
 
+// 判断是否相等
 inline bool operator==(const Slice& x, const Slice& y) {
   return ((x.size() == y.size()) &&
           (memcmp(x.data(), y.data(), x.size()) == 0));
 }
 
+// 判断不等
 inline bool operator!=(const Slice& x, const Slice& y) {
   return !(x == y);
 }
 
 inline int Slice::compare(const Slice& b) const {
+  // 获得最小长度
   const size_t min_len = (size_ < b.size_) ? size_ : b.size_;
+  // 通过memcpy比较前min_len个字符，memcpy根据ASCII大小比较
   int r = memcmp(data_, b.data_, min_len);
   if (r == 0) {
+	// 如果r=0, 判断谁的长度大, 大者获胜
     if (size_ < b.size_) r = -1;
     else if (size_ > b.size_) r = +1;
   }

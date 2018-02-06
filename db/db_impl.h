@@ -23,6 +23,7 @@ class Version;
 class VersionEdit;
 class VersionSet;
 
+// DBImpl是DB的子类, 描述了具体实现
 class DBImpl : public DB {
  public:
   DBImpl(const Options& options, const std::string& dbname);
