@@ -120,15 +120,23 @@ class DBImpl : public DB {
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Constant after construction
+  /* 系统环境配置 */
   Env* const env_;
+  /* key比较器 */
   const InternalKeyComparator internal_comparator_;
+  /* 过滤策略 */
   const InternalFilterPolicy internal_filter_policy_;
+  /* 数据库参数配置 */
   const Options options_;  // options_.comparator == &internal_comparator_
+  /* 是否写过程日志 */
   bool owns_info_log_;
+  /* 是否创建block cache */
   bool owns_cache_;
+  /* 数据库名称 */
   const std::string dbname_;
 
   // table_cache_ provides its own synchronization
+  /* table cache 指针 */
   TableCache* table_cache_;
 
   // Lock over the persistent DB state.  Non-NULL iff successfully acquired.

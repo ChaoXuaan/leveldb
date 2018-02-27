@@ -28,6 +28,9 @@ class SequentialFile;
 class Slice;
 class WritableFile;
 
+/* 环境配置基类, 当前有以下具体实现:
+ * PosixEnv, InMemoryEnv, SpecialEnv
+ */
 class Env {
  public:
   Env() { }
@@ -38,6 +41,7 @@ class Env {
   // implementation instead of relying on this default environment.
   //
   // The result of Default() belongs to leveldb and must never be deleted.
+  /* 默认环境配置适配当前系统, 具体实现在env_posix.cc文件中 */
   static Env* Default();
 
   // Create a brand new sequentially-readable file with the specified name.
@@ -46,6 +50,10 @@ class Env {
   // not exist, returns a non-OK status.
   //
   // The returned file will only be accessed by one thread at a time.
+  /* 用指定的名字创建一个全新的顺序可读的文件,
+   * 成功: 文件指针放在*result, 返回OK
+   * 失败: 置*result为NULL, 返回non-OK
+   */
   virtual Status NewSequentialFile(const std::string& fname,
                                    SequentialFile** result) = 0;
 
@@ -56,6 +64,10 @@ class Env {
   // status.
   //
   // The returned file may be concurrently accessed by multiple threads.
+  /* 用指定的名称创建一个全新的随机访问只读文件
+   * 成功: 同上
+   * 失败: 同上
+   */
   virtual Status NewRandomAccessFile(const std::string& fname,
                                      RandomAccessFile** result) = 0;
 
@@ -66,6 +78,11 @@ class Env {
   // returns non-OK.
   //
   // The returned file will only be accessed by one thread at a time.
+  /* 创建一个以指定名称写入新文件的对象, 删除所有已存在的同名文件并创建一个新文件
+   * 成功: 同上
+   * 失败: 同上
+   * Note. 一次只能一个线程访问该文件对象
+   */
   virtual Status NewWritableFile(const std::string& fname,
                                  WritableFile** result) = 0;
 
@@ -81,31 +98,44 @@ class Env {
   // not allow appending to an existing file.  Users of Env (including
   // the leveldb implementation) must be prepared to deal with
   // an Env that does not support appending.
+  /* 创建一个文件对象, 如果存在则追加内容, 如果不存在则创建新文件写入
+   * 成功: 同上
+   * 失败: 同上
+   * Note: 一次只能一个线程访问该文件对象;
+   * 	   如果系统不支持追加文件操作, 则返回IsNotSupportedError
+   */
   virtual Status NewAppendableFile(const std::string& fname,
                                    WritableFile** result);
 
   // Returns true iff the named file exists.
+  /* 判断文件是否已经存在 */
   virtual bool FileExists(const std::string& fname) = 0;
 
   // Store in *result the names of the children of the specified directory.
   // The names are relative to "dir".
   // Original contents of *results are dropped.
+  /* 在result中存储dir目录下的子目录和文件名称, 保存的是相对路径 */
   virtual Status GetChildren(const std::string& dir,
                              std::vector<std::string>* result) = 0;
 
   // Delete the named file.
+  /* 删除文件 */
   virtual Status DeleteFile(const std::string& fname) = 0;
 
   // Create the specified directory.
+  /* 创建目录 */
   virtual Status CreateDir(const std::string& dirname) = 0;
 
   // Delete the specified directory.
+  /* 删除目录 */
   virtual Status DeleteDir(const std::string& dirname) = 0;
 
   // Store the size of fname in *file_size.
+  /* file_size保存指定文件的大小 */
   virtual Status GetFileSize(const std::string& fname, uint64_t* file_size) = 0;
 
   // Rename file src to target.
+  /* 重命名文件 */
   virtual Status RenameFile(const std::string& src,
                             const std::string& target) = 0;
 
@@ -123,11 +153,20 @@ class Env {
   // to go away.
   //
   // May create the named file if it does not already exist.
+  /* 锁定文件, *lock中存放的对象表示fname指定的文件已被锁定, FileLock仅仅是一个标记,
+   * 并未用到真正的锁,
+   * 如果文件已被其他线程锁定, lock=NULL;
+   * 如果文件不存在, 则会新建文件
+   */
   virtual Status LockFile(const std::string& fname, FileLock** lock) = 0;
 
   // Release the lock acquired by a previous successful call to LockFile.
   // REQUIRES: lock was returned by a successful LockFile() call
   // REQUIRES: lock has not already been unlocked.
+  /* 释放文件锁
+   * 要求: 1. LockFile之前调用成功
+   * 	   2. 没有调用过UnlockFile
+   */
   virtual Status UnlockFile(FileLock* lock) = 0;
 
   // Arrange to run "(*function)(arg)" once in a background thread.
@@ -136,28 +175,37 @@ class Env {
   // added to the same Env may run concurrently in different threads.
   // I.e., the caller may not assume that background work items are
   // serialized.
+  /* 后台任务, 由一个线程执行,
+   * @function 函数指针, 参数是void*
+   * @arg 函数参数
+   */
   virtual void Schedule(
       void (*function)(void* arg),
       void* arg) = 0;
 
   // Start a new thread, invoking "function(arg)" within the new thread.
   // When "function(arg)" returns, the thread will be destroyed.
+  /* 创建一个线程 */
   virtual void StartThread(void (*function)(void* arg), void* arg) = 0;
 
   // *path is set to a temporary directory that can be used for testing. It may
   // or many not have just been created. The directory may or may not differ
   // between runs of the same process, but subsequent calls will return the
   // same directory.
+  /* 获得测试目录 */
   virtual Status GetTestDirectory(std::string* path) = 0;
 
   // Create and return a log file for storing informational messages.
+  /* 创建新的日志文件, result存储日志对象 */
   virtual Status NewLogger(const std::string& fname, Logger** result) = 0;
 
   // Returns the number of micro-seconds since some fixed point in time. Only
   // useful for computing deltas of time.
+  /* 当前时间, 以微秒显示 */
   virtual uint64_t NowMicros() = 0;
 
   // Sleep/delay the thread for the prescribed number of micro-seconds.
+  /* sleep, 单位微秒 */
   virtual void SleepForMicroseconds(int micros) = 0;
 
  private:

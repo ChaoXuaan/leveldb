@@ -42,15 +42,21 @@ static Status IOError(const std::string& context, int err_number) {
 // Currently used to limit read-only file descriptors and mmap file usage
 // so that we do not end up running out of file descriptors, virtual memory,
 // or running into kernel performance problems for very large databases.
+/* 辅助类, 用于限制资源使用以免资源耗尽
+ * 目前只用来限制只读文件的文件描述符个数和mmap文件，
+ * 避免最终耗尽文件描述符、虚拟内存，或者运行到大型数据库的内核性能问题。
+ */
 class Limiter {
  public:
   // Limit maximum number of resources to |n|.
+  /* 资源最大值 n */
   Limiter(intptr_t n) {
     SetAllowed(n);
   }
 
   // If another resource is available, acquire it and return true.
   // Else return false.
+  /* 请求一个资源, 成功返回true, 失败返回false */
   bool Acquire() {
     if (GetAllowed() <= 0) {
       return false;
@@ -73,14 +79,18 @@ class Limiter {
   }
 
  private:
+  /* 互斥量 */
   port::Mutex mu_;
+  /* 原子指针 */
   port::AtomicPointer allowed_;
 
+  /* 获得之前保存的值 */
   intptr_t GetAllowed() const {
     return reinterpret_cast<intptr_t>(allowed_.Acquire_Load());
   }
 
   // REQUIRES: mu_ must be held
+  /* 保存v */
   void SetAllowed(intptr_t v) {
     allowed_.Release_Store(reinterpret_cast<void*>(v));
   }
@@ -288,10 +298,12 @@ class PosixWritableFile : public WritableFile {
   }
 };
 
+/* 设置获取记录锁 */
 static int LockOrUnlock(int fd, bool lock) {
   errno = 0;
   struct flock f;
   memset(&f, 0, sizeof(f));
+  /* lock为true加写锁, 否则解锁 */
   f.l_type = (lock ? F_WRLCK : F_UNLCK);
   f.l_whence = SEEK_SET;
   f.l_start = 0;
@@ -299,6 +311,7 @@ static int LockOrUnlock(int fd, bool lock) {
   return fcntl(fd, F_SETLK, &f);
 }
 
+/* 继承于FileLock, 包含两个变量: 文件描述符和文件名 */
 class PosixFileLock : public FileLock {
  public:
   int fd_;
@@ -308,6 +321,7 @@ class PosixFileLock : public FileLock {
 // Set of locked files.  We keep a separate set instead of just
 // relying on fcntrl(F_SETLK) since fcntl(F_SETLK) does not provide
 // any protection against multiple uses from the same process.
+/* FileLock table, 用set存储已经被锁定的文件 */
 class PosixLockTable {
  private:
   port::Mutex mu_;
@@ -334,11 +348,13 @@ class PosixEnv : public Env {
 
   virtual Status NewSequentialFile(const std::string& fname,
                                    SequentialFile** result) {
+    /* 只读方式打开文件 */
     FILE* f = fopen(fname.c_str(), "r");
     if (f == NULL) {
       *result = NULL;
       return IOError(fname, errno);
     } else {
+      /* 打开成功, 创建 PosixSequentialFile */
       *result = new PosixSequentialFile(fname, f);
       return Status::OK();
     }
@@ -348,10 +364,12 @@ class PosixEnv : public Env {
                                      RandomAccessFile** result) {
     *result = NULL;
     Status s;
+    /* 打开文件, 通过系统调用只读打开, 返回文件描述符 */
     int fd = open(fname.c_str(), O_RDONLY);
     if (fd < 0) {
       s = IOError(fname, errno);
     } else if (mmap_limit_.Acquire()) {
+      /* 首先使用mmap */
       uint64_t size;
       s = GetFileSize(fname, &size);
       if (s.ok()) {
@@ -364,9 +382,11 @@ class PosixEnv : public Env {
       }
       close(fd);
       if (!s.ok()) {
+	/* 如果 s.ok == true, 资源释放在result调用析构函数时 */
         mmap_limit_.Release();
       }
     } else {
+      /* 如果mmap使用完, 则消耗fd */
       *result = new PosixRandomAccessFile(fname, fd, &fd_limit_);
     }
     return s;
@@ -375,11 +395,13 @@ class PosixEnv : public Env {
   virtual Status NewWritableFile(const std::string& fname,
                                  WritableFile** result) {
     Status s;
+    /* 写方式打开文件 */
     FILE* f = fopen(fname.c_str(), "w");
     if (f == NULL) {
       *result = NULL;
       s = IOError(fname, errno);
     } else {
+      /* 创建PosixWritableFile */
       *result = new PosixWritableFile(fname, f);
     }
     return s;
@@ -388,11 +410,13 @@ class PosixEnv : public Env {
   virtual Status NewAppendableFile(const std::string& fname,
                                    WritableFile** result) {
     Status s;
+    /* 追加方式打开文件 */
     FILE* f = fopen(fname.c_str(), "a");
     if (f == NULL) {
       *result = NULL;
       s = IOError(fname, errno);
     } else {
+      /* 创建PosixWritableFile */
       *result = new PosixWritableFile(fname, f);
     }
     return s;
@@ -441,6 +465,7 @@ class PosixEnv : public Env {
     return result;
   }
 
+  /* 获得文件大小, 单位byte */
   virtual Status GetFileSize(const std::string& fname, uint64_t* size) {
     Status s;
     struct stat sbuf;
@@ -461,20 +486,25 @@ class PosixEnv : public Env {
     return result;
   }
 
+  /* 锁定文件 */
   virtual Status LockFile(const std::string& fname, FileLock** lock) {
     *lock = NULL;
     Status result;
+    /* 打开文件, 不存在则创建 */
     int fd = open(fname.c_str(), O_RDWR | O_CREAT, 0644);
     if (fd < 0) {
       result = IOError(fname, errno);
     } else if (!locks_.Insert(fname)) {
+      /* 插入到PsixLockTable中, 插入失败说明已经有线程在使用 */
       close(fd);
       result = Status::IOError("lock " + fname, "already held by process");
     } else if (LockOrUnlock(fd, true) == -1) {
+      /* 设置获取记录锁 */
       result = IOError("lock " + fname, errno);
       close(fd);
       locks_.Remove(fname);
     } else {
+      /* 没有被其他线程锁定 */
       PosixFileLock* my_lock = new PosixFileLock;
       my_lock->fd_ = fd;
       my_lock->name_ = fname;
@@ -483,12 +513,15 @@ class PosixEnv : public Env {
     return result;
   }
 
+  /* 解锁文件 */
   virtual Status UnlockFile(FileLock* lock) {
     PosixFileLock* my_lock = reinterpret_cast<PosixFileLock*>(lock);
     Status result;
     if (LockOrUnlock(my_lock->fd_, false) == -1) {
+      /* 设置获取记录锁, 传入flase, fcntl释放锁 */
       result = IOError("unlock", errno);
     }
+    /* 从PosixLockTable中删除文件名表示没有被锁 */
     locks_.Remove(my_lock->name_);
     close(my_lock->fd_);
     delete my_lock;
@@ -513,6 +546,7 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
+  /* 获得线程id */
   static uint64_t gettid() {
     pthread_t tid = pthread_self();
     uint64_t thread_id = 0;
@@ -521,6 +555,7 @@ class PosixEnv : public Env {
   }
 
   virtual Status NewLogger(const std::string& fname, Logger** result) {
+    /* 创建PosixLogger */
     FILE* f = fopen(fname.c_str(), "w");
     if (f == NULL) {
       *result = NULL;
@@ -542,6 +577,7 @@ class PosixEnv : public Env {
   }
 
  private:
+  /* thread错误输出 */
   void PthreadCall(const char* label, int result) {
     if (result != 0) {
       fprintf(stderr, "pthread %s: %s\n", label, strerror(result));
@@ -551,27 +587,38 @@ class PosixEnv : public Env {
 
   // BGThread() is the body of the background thread
   void BGThread();
+  /* BGThread封装 */
   static void* BGThreadWrapper(void* arg) {
     reinterpret_cast<PosixEnv*>(arg)->BGThread();
     return NULL;
   }
 
+  /* 互斥量 */
   pthread_mutex_t mu_;
+  /* 条件变量 */
   pthread_cond_t bgsignal_;
+  /* 线程 */
   pthread_t bgthread_;
+  /*  */
   bool started_bgthread_;
 
   // Entry per Schedule() call
+  /* 后台任务封装 */
   struct BGItem { void* arg; void (*function)(void*); };
+  /* 任务队列 */
   typedef std::deque<BGItem> BGQueue;
   BGQueue queue_;
 
+  /* 记录需要锁定的文件 */
   PosixLockTable locks_;
+  /* mmap限制 */
   Limiter mmap_limit_;
+  /* fd限制 */
   Limiter fd_limit_;
 };
 
 // Return the maximum number of concurrent mmaps.
+/* 最大mmaps, 64位下最多1000, 低于64位0个 */
 static int MaxMmaps() {
   if (mmap_limit >= 0) {
     return mmap_limit;
@@ -582,23 +629,29 @@ static int MaxMmaps() {
 }
 
 // Return the maximum number of read-only files to keep open.
+/* 返回只读文件的最大数量以保持打开状态 */
 static intptr_t MaxOpenFiles() {
   if (open_read_only_file_limit >= 0) {
     return open_read_only_file_limit;
   }
   struct rlimit rlim;
+  /* 获得进程能打开的最多文件数 */
   if (getrlimit(RLIMIT_NOFILE, &rlim)) {
+    /* 调用失败 */
     // getrlimit failed, fallback to hard-coded default.
     open_read_only_file_limit = 50;
   } else if (rlim.rlim_cur == RLIM_INFINITY) {
+    /* 无限制 */
     open_read_only_file_limit = std::numeric_limits<int>::max();
   } else {
     // Allow use of 20% of available file descriptors for read-only files.
+    /* 一般只允许系统限制的20% */
     open_read_only_file_limit = rlim.rlim_cur / 5;
   }
   return open_read_only_file_limit;
 }
 
+/* 构造函数, 初始化变量 */
 PosixEnv::PosixEnv()
     : started_bgthread_(false),
       mmap_limit_(MaxMmaps()),
@@ -607,19 +660,24 @@ PosixEnv::PosixEnv()
   PthreadCall("cvar_init", pthread_cond_init(&bgsignal_, NULL));
 }
 
+/* 任务调度 */
 void PosixEnv::Schedule(void (*function)(void*), void* arg) {
+  /* 加锁 */
   PthreadCall("lock", pthread_mutex_lock(&mu_));
 
   // Start background thread if necessary
+  /* 创建后台线程执行任务 */
   if (!started_bgthread_) {
     started_bgthread_ = true;
     PthreadCall(
         "create thread",
+	/* 创建线程, 底层实际调用是BGThread */
         pthread_create(&bgthread_, NULL,  &PosixEnv::BGThreadWrapper, this));
   }
 
   // If the queue is currently empty, the background thread may currently be
   // waiting.
+  /* 如果是空, 唤醒后台线程 */
   if (queue_.empty()) {
     PthreadCall("signal", pthread_cond_signal(&bgsignal_));
   }
@@ -629,22 +687,31 @@ void PosixEnv::Schedule(void (*function)(void*), void* arg) {
   queue_.back().function = function;
   queue_.back().arg = arg;
 
+  /* 解锁 */
   PthreadCall("unlock", pthread_mutex_unlock(&mu_));
 }
 
+/* 后台调度线程, 当调用Schedule时使用 */
 void PosixEnv::BGThread() {
+  /* 死循环 */
   while (true) {
     // Wait until there is an item that is ready to run
+    /* 加锁 */
     PthreadCall("lock", pthread_mutex_lock(&mu_));
+    /* 如果任务队列空则等待 */
     while (queue_.empty()) {
       PthreadCall("wait", pthread_cond_wait(&bgsignal_, &mu_));
     }
 
+    /* 获取队列头对象的函数指针 */
     void (*function)(void*) = queue_.front().function;
+    /* 获取队列头对象的函数参数 */
     void* arg = queue_.front().arg;
+    /* 出队 */
     queue_.pop_front();
-
+    /* 解锁 */
     PthreadCall("unlock", pthread_mutex_unlock(&mu_));
+    /* 函数执行 */
     (*function)(arg);
   }
 }
@@ -662,6 +729,7 @@ static void* StartThreadWrapper(void* arg) {
   return NULL;
 }
 
+/* 启动线程 */
 void PosixEnv::StartThread(void (*function)(void* arg), void* arg) {
   pthread_t t;
   StartThreadState* state = new StartThreadState;
@@ -687,6 +755,7 @@ void EnvPosixTestHelper::SetReadOnlyMMapLimit(int limit) {
   mmap_limit = limit;
 }
 
+/* 默认使用PosixEnv */
 Env* Env::Default() {
   pthread_once(&once, InitDefaultEnv);
   return default_env;

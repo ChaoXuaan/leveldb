@@ -82,11 +82,17 @@ struct DBImpl::CompactionState {
 };
 
 // Fix user-supplied options to be reasonable
+/* 使得ptr指向的值在[minvalue, maxvalue]区间内,
+ * 如果大于maxvalue, 则令(*ptr)=maxvalue,
+ * 如果小于minvalye, 则令(*ptr)=minvalue.
+ */
 template <class T,class V>
 static void ClipToRange(T* ptr, V minvalue, V maxvalue) {
   if (static_cast<V>(*ptr) > maxvalue) *ptr = maxvalue;
   if (static_cast<V>(*ptr) < minvalue) *ptr = minvalue;
 }
+
+/* 对src选项进行审查, 使其符合规则 */
 Options SanitizeOptions(const std::string& dbname,
                         const InternalKeyComparator* icmp,
                         const InternalFilterPolicy* ipolicy,
@@ -1487,11 +1493,17 @@ Status DB::Delete(const WriteOptions& opt, const Slice& key) {
 
 DB::~DB() { }
 
+/* 打开一个DB, 一般使用leveldb第一个被调用
+ * @options 配置参数
+ * @dbname  DB的名字
+ * @dbptr   DB的二级指针, 通过它操作数据库
+ */
 Status DB::Open(const Options& options, const std::string& dbname,
                 DB** dbptr) {
   *dbptr = NULL;
-
+  /* 调用默认实现 */
   DBImpl* impl = new DBImpl(options, dbname);
+  /* 以下过程需要加锁 */
   impl->mutex_.Lock();
   VersionEdit edit;
   // Recover handles create_if_missing, error_if_exists
