@@ -79,6 +79,7 @@ static const bool kLittleEndian = PLATFORM_IS_LITTLE_ENDIAN;
 
 class CondVar;
 
+/* 对pthread_mutex_t的封装 */
 class Mutex {
  public:
   Mutex();
@@ -97,6 +98,7 @@ class Mutex {
   void operator=(const Mutex&);
 };
 
+/* 对pthread_cond_t的封装 */
 class CondVar {
  public:
   explicit CondVar(Mutex* mu);

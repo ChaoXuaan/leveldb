@@ -73,6 +73,7 @@ class Limiter {
 
   // Release a resource acquired by a previous call to Acquire() that returned
   // true.
+  // 释放资源
   void Release() {
     MutexLock l(&mu_);
     SetAllowed(GetAllowed() + 1);
@@ -599,7 +600,7 @@ class PosixEnv : public Env {
   pthread_cond_t bgsignal_;
   /* 线程 */
   pthread_t bgthread_;
-  /*  */
+  /* 后台工作线程是否已经创建 */
   bool started_bgthread_;
 
   // Entry per Schedule() call

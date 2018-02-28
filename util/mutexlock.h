@@ -19,7 +19,9 @@ namespace leveldb {
 //     MutexLock l(&mu_);       // mu_ is an instance variable
 //     ... some complex code, possibly with multiple return paths ...
 //   }
-
+/* 辅助类, 在构造函数中解锁, 析构函数中解锁, 通过传递同一个Mutex对象,
+ * 可以实现自动加锁, 解锁
+ */
 class SCOPED_LOCKABLE MutexLock {
  public:
   explicit MutexLock(port::Mutex *mu) EXCLUSIVE_LOCK_FUNCTION(mu)
