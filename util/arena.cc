@@ -20,6 +20,10 @@ Arena::~Arena() {
   }
 }
 
+// 向系统申请内存
+// 1. 如果申请的内存大于 kBlockSize / 4(1K)，则直接申请所需内存大小
+// 2. 否则，一次申请 kBlockSize(4K)
+// 更倾向于小内存申请
 char* Arena::AllocateFallback(size_t bytes) {
   if (bytes > kBlockSize / 4) {
     // Object is more than a quarter of our block size.  Allocate it separately
@@ -29,6 +33,7 @@ char* Arena::AllocateFallback(size_t bytes) {
   }
 
   // We waste the remaining space in the current block.
+  // 舍弃当前内存块的余额，重新申请一个大块内存
   alloc_ptr_ = AllocateNewBlock(kBlockSize);
   alloc_bytes_remaining_ = kBlockSize;
 
@@ -38,6 +43,12 @@ char* Arena::AllocateFallback(size_t bytes) {
   return result;
 }
 
+// 保证分配的字节对齐，令首地址是 sizeof(void*) 的整数倍
+// 假设 align = 8 = 1000; alloc_ptr_ = 36 = 0010 0100; bytes = 11
+// 1. current_mod = 00100100 & 0111 = 00000100 = 4
+// 2. slop = align - current_mod = 4
+// 3. needed = bytes + slop = 15
+// 4. result = alloc_ptr_ + slop = 40 = 0010 1000
 char* Arena::AllocateAligned(size_t bytes) {
   const int align = (sizeof(void*) > 8) ? sizeof(void*) : 8;
   assert((align & (align-1)) == 0);   // Pointer size should be a power of 2
@@ -57,9 +68,12 @@ char* Arena::AllocateAligned(size_t bytes) {
   return result;
 }
 
+// 分配内存空间，并保存首地址，记录当前使用的内存大小
 char* Arena::AllocateNewBlock(size_t block_bytes) {
   char* result = new char[block_bytes];
+  // 保存新申请的内存块
   blocks_.push_back(result);
+  // 记录已申请的内存
   memory_usage_.NoBarrier_Store(
       reinterpret_cast<void*>(MemoryUsage() + block_bytes + sizeof(char*)));
   return result;

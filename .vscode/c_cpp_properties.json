@@ -1,0 +1,29 @@
+{
+    "env" : {
+        "myDefaultIncludePath": [
+            "/usr/include",
+            "usr/local/include",
+            "/home/xuan/workspace/db/leveldb",
+            "/home/xuan/workspace/db/leveldb/port",
+            "/home/xuan/workspace/db/leveldb/include",
+            "/home/xuan/workspace/db/leveldb/db",
+            "/home/xuan/workspace/db/leveldb/util"
+        ],
+        "myCompilerPath": "/usr/local/bin/gcc-7"
+    },
+    "configurations": [
+        {
+            "name": "LevelDB",
+            "intelliSenseMode": "clang-x64",
+            "includePath": [ "${myDefaultIncludePath}"],
+            "cStandard": "c11",
+            "cppStandard": "c++11",
+            "browse": {
+                "path": [ "${workspaceFolder}" ],
+                "limitSymbolsToIncludedHeaders": true,
+                "databaseFilename": ""
+            }
+        }
+    ],
+    "version": 4
+}
